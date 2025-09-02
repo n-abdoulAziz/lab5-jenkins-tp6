@@ -1,29 +1,51 @@
 pipeline {
     agent any
+
+    tools {
+        maven 'Maven' // À configurer dans Jenkins (Manage Jenkins > Global Tool Configuration)
+    }
+
     stages {
-        stage(‘Build’) {
+        stage('Checkout') {
             steps {
-                 sh "/opt/apache-maven/bin/mvn clean package"
+                git branch: 'main', url: 'https://github.com/n-abdoulAziz/lab5-jenkins-tp6.git'
             }
         }
-        stage(‘Test’) {
+
+        stage('Build') {
             steps {
-                 sh "/opt/apache-maven/bin/mvn test"
+                sh 'mvn clean package -DskipTests'
             }
         }
-        stage('Deploy') {
+
+        stage('Test') {
             steps {
-                sh '/Applications/Docker.app/Contents/Resources/bin/docker-compose/docker-compose up -d --build'
+                sh 'mvn test'
             }
         }
+
+        stage('Deploy (local Docker)') {
+            steps {
+                sh 'docker-compose up -d --build'
+            }
+        }
+
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub_credentials', passwordVariable: 'DOCKER_HUB_PASSWORD', usernameVariable: 'DOCKER_HUB_USERNAME')]) {
-                    sh "/Applications/Docker.app/Contents/Resources/bin/docker login -u $DOCKER_HUB_USERNAME -p $DOCKER_HUB_PASSWORD"
-                    sh "/Applications/Docker.app/Contents/Resources/bin/docker tag evalspringse:latest ngorseck/evalspringse:v$BUILD_NUMBER"
-                    sh "/Applications/Docker.app/Contents/Resources/bin/docker push ngorseck/evalspringse:v$BUILD_NUMBER"
-               }
+                // Utilise les credentials DockerHub configurés dans Jenkins
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub_credentials', 
+                    passwordVariable: 'DOCKER_HUB_PASSWORD', 
+                    usernameVariable: 'DOCKER_HUB_USERNAME')]) {
+
+                    // Se connecter à DockerHub
+                    sh "echo $DOCKER_HUB_PASSWORD | docker login -u $DOCKER_HUB_USERNAME --password-stdin"
+
+                    // Taguer l'image locale et la pousser sur DockerHub
+                    sh "docker tag lab5-jenkins-tp6:latest $DOCKER_HUB_USERNAME/lab5-jenkins-tp6:v$BUILD_NUMBER"
+                    sh "docker push $DOCKER_HUB_USERNAME/lab5-jenkins-tp6:v$BUILD_NUMBER"
+                }
             }
-       }
+        }
     }
 }
