@@ -1,51 +1,51 @@
 pipeline {
-    agent any
-
-    tools {
-        maven 'Maven' // À configurer dans Jenkins (Manage Jenkins > Global Tool Configuration)
-    }
-
+    // Chaque stage choisit son propre env
+    agent none
     stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'main', url: 'https://github.com/n-abdoulAziz/lab5-jenkins-tp6.git'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh 'mvn clean package -DskipTests'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                sh 'mvn test'
-            }
-        }
-
-        stage('Deploy (local Docker)') {
-            steps {
-                sh 'docker-compose up -d --build'
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                // Utilise les credentials DockerHub configurés dans Jenkins
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub_credentials', 
-                    passwordVariable: 'DOCKER_HUB_PASSWORD', 
-                    usernameVariable: 'DOCKER_HUB_USERNAME')]) {
-
-                    // Se connecter à DockerHub
-                    sh "echo $DOCKER_HUB_PASSWORD | docker login -u $DOCKER_HUB_USERNAME --password-stdin"
-
-                    // Taguer l'image locale et la pousser sur DockerHub
-                    sh "docker tag lab5-jenkins-tp6:latest $DOCKER_HUB_USERNAME/lab5-jenkins-tp6:v$BUILD_NUMBER"
-                    sh "docker push $DOCKER_HUB_USERNAME/lab5-jenkins-tp6:v$BUILD_NUMBER"
+        stage('Build Maven') {
+            agent {
+                docker {
+                    image 'maven:3.9.11-eclipse-temurin-8-alpine'
+                    args '-u root -v $HOME/.m2:/root/.m2'
                 }
             }
+            steps {
+                 sh "mvn clean package -DskipTests"
+            }
         }
+        stage('Unit Test') {
+            agent {
+                docker {
+                    image 'maven:3.9.11-eclipse-temurin-8-alpine'
+                    args '-u root -v $HOME/.m2:/root/.m2'
+                }
+            }
+            steps {
+                sh "mvn test"
+            }
+        }
+        stage('Push to Docker Hub') {
+            agent {
+                docker {
+                    image 'docker:25.0.3'
+                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
+                }
+            }
+             steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub_credentials', passwordVariable: 'DOCKER_HUB_PASSWORD', usernameVariable: 'DOCKER_HUB_USERNAME')]) {
+                    sh "docker login -u $DOCKER_HUB_USERNAME -p $DOCKER_HUB_PASSWORD"
+                    sh "docker build -t ngorseck/evalspringsecu:v$BUILD_NUMBER ."
+                    sh "docker push ngorseck/evalspringsecu:v$BUILD_NUMBER"
+               }
+            }
+       }
     }
+     post {
+        success {
+           echo "Pipeline build successfuly"
+        }
+        failure {
+           echo "Pipeline failed"
+        }
+     }
 }
